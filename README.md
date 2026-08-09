@@ -30,6 +30,11 @@ distribution and proves:
 - its five inclusion marginals are `(3/10, 7/20, 3/10, 7/20, 7/20)`; and
 - its expected coverage is four.
 
+Finally, it defines the first- and second-moment constraints for the
+pairwise-independent extension, proves that feasible distributions have the
+required joint inclusion moments, and confirms that the unrestricted numerator
+witness is not pairwise independent.
+
 The monotonicity and submodularity results use kernel-checked `decide` over the
 finite state space; exact rational identities use the proof-producing
 `norm_num` tactic. There are no `sorry` declarations. An axiom audit reports
@@ -37,7 +42,6 @@ only Mathlib's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
 
 Still to formalize:
 
-- pairwise independence for the competing distributions;
 - the quadratic dual certificate bounding the pairwise-independent optimum;
 - the final ratio `640 / 479 > 4 / 3`.
 

@@ -114,6 +114,32 @@ def inclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α)
     (X : α → Outcome) (i : Ground) : ℚ :=
   ∑ a, if i ∈ X a then μ.weight a else 0
 
+/-- The probability that both `i` and `j` belong to the outcome. -/
+def jointInclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) (i j : Ground) : ℚ :=
+  ∑ a, if i ∈ X a ∧ j ∈ X a then μ.weight a else 0
+
+/-- The exact expected coverage of a random outcome. -/
+def expectedCoverage {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) : ℚ :=
+  μ.expectation (fun a => coverage (X a))
+
+/-- The inclusion marginals of `X` agree with `x`. -/
+def HasMarginals {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) (x : Ground → ℚ) : Prop :=
+  ∀ i, inclusionMarginal μ X i = x i
+
+/-- Pairwise independence in the moment form used by the finite LP. -/
+def IsPairwiseIndependent {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) : Prop :=
+  ∀ i j, i ≠ j →
+    jointInclusionMarginal μ X i j = inclusionMarginal μ X i * inclusionMarginal μ X j
+
+/-- Feasibility for the pairwise-independent extension at marginal vector `x`. -/
+def IsPairwiseFeasibleAt {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) (x : Ground → ℚ) : Prop :=
+  HasMarginals μ X x ∧ IsPairwiseIndependent μ X
+
 /-- The marginal vector used in the counterexample. -/
 def targetMarginal (i : Ground) : ℚ :=
   match i with
@@ -130,12 +156,31 @@ theorem numerator_marginals :
     norm_num [inclusionMarginal, numeratorDistribution, numeratorOutcome,
       numeratorWeight, targetMarginal, Fin.sum_univ_succ, Fin.ext_iff]
 
+theorem numerator_hasMarginals :
+    HasMarginals numeratorDistribution numeratorOutcome targetMarginal :=
+  numerator_marginals
+
+/-- The numerator witness is unrestricted: coordinates `0` and `2` are not independent. -/
+theorem numerator_not_pairwiseIndependent :
+    ¬IsPairwiseIndependent numeratorDistribution numeratorOutcome := by
+  intro h
+  have h02 := h 0 2 (by decide)
+  norm_num [jointInclusionMarginal, inclusionMarginal, numeratorDistribution,
+    numeratorOutcome, numeratorWeight, Fin.sum_univ_succ, Fin.ext_iff] at h02
+
+/-- Pairwise feasibility fixes every off-diagonal second moment. -/
+theorem feasible_jointInclusionMarginal {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome)
+    (h : IsPairwiseFeasibleAt μ X targetMarginal) {i j : Ground} (hij : i ≠ j) :
+    jointInclusionMarginal μ X i j = targetMarginal i * targetMarginal j := by
+  rw [h.2 i j hij, h.1 i, h.1 j]
+
 theorem numerator_expectedCoverage :
-    numeratorDistribution.expectation (fun a => coverage (numeratorOutcome a)) = 4 := by
+    expectedCoverage numeratorDistribution numeratorOutcome = 4 := by
   have h₀ := witness_outcomes_cover_all.1
   have h₁ := witness_outcomes_cover_all.2.1
   have h₂ := witness_outcomes_cover_all.2.2
-  norm_num [FiniteDistribution.expectation, numeratorDistribution, numeratorOutcome,
+  norm_num [expectedCoverage, FiniteDistribution.expectation, numeratorDistribution, numeratorOutcome,
     numeratorWeight, Fin.sum_univ_succ, h₀, h₁, h₂]
 
 end CorrelationGap
