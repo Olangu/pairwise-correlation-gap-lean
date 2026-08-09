@@ -1,8 +1,10 @@
 import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Rat.BigOperators
 import Mathlib.Algebra.BigOperators.Fin
+import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.FinCases
 import Mathlib.Tactic.NormNum
+import Mathlib.Tactic.Ring
 
 /-!
 # Pairwise-independent correlation-gap counterexample
@@ -55,6 +57,32 @@ namespace FiniteDistribution
 def expectation {α : Type*} [Fintype α] (μ : FiniteDistribution α)
     (f : α → ℚ) : ℚ :=
   ∑ a, μ.weight a * f a
+
+@[simp]
+theorem expectation_const {α : Type*} [Fintype α] (μ : FiniteDistribution α) (c : ℚ) :
+    μ.expectation (fun _ => c) = c := by
+  rw [expectation, ← Finset.sum_mul, μ.total, one_mul]
+
+@[simp]
+theorem expectation_add {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (f g : α → ℚ) :
+    μ.expectation (fun a => f a + g a) = μ.expectation f + μ.expectation g := by
+  simp [expectation, mul_add, Finset.sum_add_distrib]
+
+@[simp]
+theorem expectation_sub {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (f g : α → ℚ) :
+    μ.expectation (fun a => f a - g a) = μ.expectation f - μ.expectation g := by
+  simp [expectation, mul_sub, Finset.sum_sub_distrib]
+
+@[simp]
+theorem expectation_const_mul {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (c : ℚ) (f : α → ℚ) :
+    μ.expectation (fun a => c * f a) = c * μ.expectation f := by
+  simp only [expectation, Finset.mul_sum]
+  apply Finset.sum_congr rfl
+  intro a _
+  ring
 
 end FiniteDistribution
 
@@ -119,6 +147,29 @@ def jointInclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α
     (X : α → Outcome) (i j : Ground) : ℚ :=
   ∑ a, if i ∈ X a ∧ j ∈ X a then μ.weight a else 0
 
+/-- The rational indicator that `i` belongs to `S`. -/
+def inclusionIndicator (i : Ground) (S : Outcome) : ℚ :=
+  if i ∈ S then 1 else 0
+
+@[simp]
+theorem expectation_inclusionIndicator {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome) (i : Ground) :
+    μ.expectation (fun a => inclusionIndicator i (X a)) = inclusionMarginal μ X i := by
+  unfold FiniteDistribution.expectation inclusionMarginal inclusionIndicator
+  apply Finset.sum_congr rfl
+  intro a _
+  by_cases h : i ∈ X a <;> simp [h]
+
+@[simp]
+theorem expectation_indicator_mul {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome) (i j : Ground) :
+    μ.expectation (fun a => inclusionIndicator i (X a) * inclusionIndicator j (X a)) =
+      jointInclusionMarginal μ X i j := by
+  unfold FiniteDistribution.expectation jointInclusionMarginal inclusionIndicator
+  apply Finset.sum_congr rfl
+  intro a _
+  by_cases hi : i ∈ X a <;> by_cases hj : j ∈ X a <;> simp [hi, hj]
+
 /-- The exact expected coverage of a random outcome. -/
 def expectedCoverage {α : Type*} [Fintype α] (μ : FiniteDistribution α)
     (X : α → Outcome) : ℚ :=
@@ -174,6 +225,124 @@ theorem feasible_jointInclusionMarginal {α : Type*} [Fintype α]
     (h : IsPairwiseFeasibleAt μ X targetMarginal) {i j : Ground} (hij : i ≠ j) :
     jointInclusionMarginal μ X i j = targetMarginal i * targetMarginal j := by
   rw [h.2 i j hij, h.1 i, h.1 j]
+
+/-! ## The quadratic dual certificate -/
+
+/-- Integer-valued membership indicator used for exhaustive checking. -/
+def inclusionIndicatorInt (i : Ground) (S : Outcome) : ℤ :=
+  if i ∈ S then 1 else 0
+
+/-- Twice the quadratic dual certificate, with integral coefficients. -/
+def dualCertificateTwiceInt (S : Outcome) : ℤ :=
+  let I := fun i => inclusionIndicatorInt i S
+  1 + 3 * (I 0 + I 2 + I 3 + I 4) + 7 * I 1
+    - 2 * (I 0 * I 1 + I 1 * I 2)
+    - 3 * (I 1 * I 3 + I 1 * I 4)
+    + (I 0 * I 2 + I 3 * I 4)
+    - (I 0 * I 3 + I 0 * I 4 + I 2 * I 3 + I 2 * I 4)
+
+/-- Rational form of twice the quadratic dual certificate. -/
+def dualCertificateTwice (S : Outcome) : ℚ :=
+  let I := fun i => inclusionIndicator i S
+  1 + 3 * (I 0 + I 2 + I 3 + I 4) + 7 * I 1
+    - 2 * (I 0 * I 1 + I 1 * I 2)
+    - 3 * (I 1 * I 3 + I 1 * I 4)
+    + (I 0 * I 2 + I 3 * I 4)
+    - (I 0 * I 3 + I 0 * I 4 + I 2 * I 3 + I 2 * I 4)
+
+/-- The quadratic certificate itself. -/
+def dualCertificate (S : Outcome) : ℚ :=
+  dualCertificateTwice S / 2
+
+/-- The moment expression obtained by taking the expectation of the doubled certificate. -/
+def dualMomentValue {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) : ℚ :=
+  let m := inclusionMarginal μ X
+  let p := jointInclusionMarginal μ X
+  1 + 3 * (m 0 + m 2 + m 3 + m 4) + 7 * m 1
+    - 2 * (p 0 1 + p 1 2)
+    - 3 * (p 1 3 + p 1 4)
+    + (p 0 2 + p 3 4)
+    - (p 0 3 + p 0 4 + p 2 3 + p 2 4)
+
+theorem dualCertificateTwiceInt_dominates :
+    ∀ S, (2 : ℤ) * coverage S ≤ dualCertificateTwiceInt S := by
+  decide
+
+theorem dualCertificateTwice_eq_cast (S : Outcome) :
+    dualCertificateTwice S = (dualCertificateTwiceInt S : ℚ) := by
+  simp [dualCertificateTwice, dualCertificateTwiceInt, inclusionIndicator,
+    inclusionIndicatorInt]
+
+theorem coverage_le_dualCertificate (S : Outcome) :
+    (coverage S : ℚ) ≤ dualCertificate S := by
+  rw [dualCertificate]
+  apply (le_div_iff₀ (by norm_num : (0 : ℚ) < 2)).2
+  have h := dualCertificateTwiceInt_dominates S
+  have h' : ((((2 : ℤ) * (coverage S : ℤ)) : ℤ) : ℚ) ≤
+      (dualCertificateTwiceInt S : ℚ) :=
+    Int.cast_le.2 h
+  simpa [dualCertificateTwice_eq_cast, mul_comm] using h'
+
+theorem expectation_dualCertificateTwice {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome) :
+    μ.expectation (fun a => dualCertificateTwice (X a)) = dualMomentValue μ X := by
+  simp [dualCertificateTwice, dualMomentValue]
+
+theorem dualMomentValue_of_feasible {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome)
+    (h : IsPairwiseFeasibleAt μ X targetMarginal) :
+    dualMomentValue μ X = 479 / 80 := by
+  dsimp [dualMomentValue]
+  rw [h.1 0, h.1 1, h.1 2, h.1 3, h.1 4]
+  rw [feasible_jointInclusionMarginal μ X h (i := 0) (j := 1) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 1) (j := 2) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 1) (j := 3) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 1) (j := 4) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 0) (j := 2) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 3) (j := 4) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 0) (j := 3) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 0) (j := 4) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 2) (j := 3) (by decide)]
+  rw [feasible_jointInclusionMarginal μ X h (i := 2) (j := 4) (by decide)]
+  norm_num [targetMarginal]
+
+theorem expectation_dualCertificate_of_feasible {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome)
+    (h : IsPairwiseFeasibleAt μ X targetMarginal) :
+    μ.expectation (fun a => dualCertificate (X a)) = 479 / 160 := by
+  calc
+    μ.expectation (fun a => dualCertificate (X a)) =
+        μ.expectation (fun a => (1 / 2 : ℚ) * dualCertificateTwice (X a)) := by
+          congr 1
+          funext a
+          unfold dualCertificate
+          ring
+    _ = (1 / 2 : ℚ) * μ.expectation (fun a => dualCertificateTwice (X a)) := by
+      rw [FiniteDistribution.expectation_const_mul]
+    _ = (1 / 2 : ℚ) * dualMomentValue μ X := by
+      rw [expectation_dualCertificateTwice]
+    _ = 479 / 160 := by
+      rw [dualMomentValue_of_feasible μ X h]
+      norm_num
+
+theorem expectedCoverage_le_expectation_dualCertificate {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome) :
+    expectedCoverage μ X ≤ μ.expectation (fun a => dualCertificate (X a)) := by
+  unfold expectedCoverage FiniteDistribution.expectation
+  apply Finset.sum_le_sum
+  intro a _
+  exact mul_le_mul_of_nonneg_left (coverage_le_dualCertificate (X a)) (μ.nonnegative a)
+
+/-- Universal upper bound for the pairwise-independent denominator. -/
+theorem pairwise_expectedCoverage_le {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome)
+    (h : IsPairwiseFeasibleAt μ X targetMarginal) :
+    expectedCoverage μ X ≤ 479 / 160 := by
+  calc
+    expectedCoverage μ X ≤ μ.expectation (fun a => dualCertificate (X a)) :=
+      expectedCoverage_le_expectation_dualCertificate μ X
+    _ = 479 / 160 := expectation_dualCertificate_of_feasible μ X h
 
 theorem numerator_expectedCoverage :
     expectedCoverage numeratorDistribution numeratorOutcome = 4 := by

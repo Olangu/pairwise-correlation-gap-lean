@@ -35,6 +35,11 @@ pairwise-independent extension, proves that feasible distributions have the
 required joint inclusion moments, and confirms that the unrestricted numerator
 witness is not pairwise independent.
 
+The quadratic dual certificate is encoded exactly. Lean checks its pointwise
+domination over all 32 outcomes using an integer-scaled certificate, evaluates
+its expectation from the prescribed first and second moments, and proves the
+universal pairwise-independent upper bound `479/160`.
+
 The monotonicity and submodularity results use kernel-checked `decide` over the
 finite state space; exact rational identities use the proof-producing
 `norm_num` tactic. There are no `sorry` declarations. An axiom audit reports
@@ -42,7 +47,6 @@ only Mathlib's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
 
 Still to formalize:
 
-- the quadratic dual certificate bounding the pairwise-independent optimum;
 - the final ratio `640 / 479 > 4 / 3`.
 
 ## Building
