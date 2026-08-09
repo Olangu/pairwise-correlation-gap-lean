@@ -226,6 +226,108 @@ theorem feasible_jointInclusionMarginal {α : Type*} [Fintype α]
     jointInclusionMarginal μ X i j = targetMarginal i * targetMarginal j := by
   rw [h.2 i j hij, h.1 i, h.1 j]
 
+/-! ## A nonempty pairwise-feasible family -/
+
+/-- Target marginal numerators over the common denominator twenty. -/
+def targetCount (i : Ground) : ℕ :=
+  match i with
+  | 0 => 6
+  | 1 => 7
+  | 2 => 6
+  | 3 => 7
+  | 4 => 7
+
+def productDenominator : ℕ := 20 ^ 5
+
+/-- Integer numerator of the mutually independent product mass on `S`. -/
+def productWeightNumerator (S : Outcome) : ℕ :=
+  ∏ i : Ground, if i ∈ S then targetCount i else 20 - targetCount i
+
+theorem productWeightNumerator_total :
+    ∑ S : Outcome, productWeightNumerator S = productDenominator := by
+  decide
+
+theorem productWeightNumerator_marginal :
+    ∀ i, (∑ S : Outcome, if i ∈ S then productWeightNumerator S else 0) =
+      targetCount i * 20 ^ 4 := by
+  decide
+
+theorem productWeightNumerator_pair :
+    ∀ i j, i ≠ j →
+      (∑ S : Outcome, if i ∈ S ∧ j ∈ S then productWeightNumerator S else 0) =
+        targetCount i * targetCount j * 20 ^ 3 := by
+  decide
+
+/-- Mutually independent product mass, represented exactly over `ℚ`. -/
+def productWeight (S : Outcome) : ℚ :=
+  productWeightNumerator S / productDenominator
+
+theorem sum_natCast_div (f : Outcome → ℕ) (d : ℕ) :
+    (∑ S : Outcome, (f S : ℚ) / d) = ((∑ S : Outcome, f S : ℕ) : ℚ) / d := by
+  simp only [div_eq_mul_inv]
+  rw [← Finset.sum_mul]
+  simp
+
+theorem productWeight_event (P : Outcome → Prop) [DecidablePred P] :
+    (∑ S : Outcome, if P S then productWeight S else 0) =
+      ((∑ S : Outcome, if P S then productWeightNumerator S else 0 : ℕ) : ℚ) /
+        productDenominator := by
+  calc
+    (∑ S : Outcome, if P S then productWeight S else 0) =
+        ∑ S : Outcome,
+          ((if P S then productWeightNumerator S else 0 : ℕ) : ℚ) / productDenominator := by
+            apply Finset.sum_congr rfl
+            intro S _
+            by_cases h : P S <;> simp [h, productWeight]
+    _ = ((∑ S : Outcome, if P S then productWeightNumerator S else 0 : ℕ) : ℚ) /
+          productDenominator := sum_natCast_div _ _
+
+theorem productWeight_nonnegative : ∀ S, 0 ≤ productWeight S := by
+  intro S
+  exact div_nonneg (Nat.cast_nonneg _) (Nat.cast_nonneg _)
+
+theorem productWeight_total : ∑ S : Outcome, productWeight S = 1 := by
+  calc
+    (∑ S : Outcome, productWeight S) =
+        ((∑ S : Outcome, productWeightNumerator S : ℕ) : ℚ) / productDenominator :=
+      sum_natCast_div _ _
+    _ = 1 := by rw [productWeightNumerator_total]; norm_num [productDenominator]
+
+/-- The ordinary independent product distribution at the target marginals. -/
+def productDistribution : FiniteDistribution Outcome where
+  weight := productWeight
+  nonnegative := productWeight_nonnegative
+  total := productWeight_total
+
+theorem productDistribution_hasMarginals :
+    HasMarginals productDistribution id targetMarginal := by
+  intro i
+  change (∑ S : Outcome, if i ∈ S then productWeight S else 0) = targetMarginal i
+  rw [productWeight_event (fun S => i ∈ S)]
+  rw [productWeightNumerator_marginal i]
+  fin_cases i <;> norm_num [targetCount, targetMarginal, productDenominator]
+
+theorem productDistribution_pairMoment (i j : Ground) (hij : i ≠ j) :
+    jointInclusionMarginal productDistribution id i j = targetMarginal i * targetMarginal j := by
+  change (∑ S : Outcome, if i ∈ S ∧ j ∈ S then productWeight S else 0) =
+    targetMarginal i * targetMarginal j
+  rw [productWeight_event (fun S => i ∈ S ∧ j ∈ S)]
+  rw [productWeightNumerator_pair i j hij]
+  fin_cases i <;> fin_cases j
+  all_goals first
+    | exact (hij rfl).elim
+    | norm_num [targetCount, targetMarginal, productDenominator]
+
+theorem productDistribution_pairwiseIndependent :
+    IsPairwiseIndependent productDistribution id := by
+  intro i j hij
+  rw [productDistribution_pairMoment i j hij]
+  rw [productDistribution_hasMarginals i, productDistribution_hasMarginals j]
+
+theorem productDistribution_pairwiseFeasible :
+    IsPairwiseFeasibleAt productDistribution id targetMarginal :=
+  ⟨productDistribution_hasMarginals, productDistribution_pairwiseIndependent⟩
+
 /-! ## The quadratic dual certificate -/
 
 /-- Integer-valued membership indicator used for exhaustive checking. -/
@@ -344,6 +446,20 @@ theorem pairwise_expectedCoverage_le {α : Type*} [Fintype α]
       expectedCoverage_le_expectation_dualCertificate μ X
     _ = 479 / 160 := expectation_dualCertificate_of_feasible μ X h
 
+/-- No distribution can exceed the four available features. -/
+theorem expectedCoverage_le_four {α : Type*} [Fintype α]
+    (μ : FiniteDistribution α) (X : α → Outcome) :
+    expectedCoverage μ X ≤ 4 := by
+  unfold expectedCoverage FiniteDistribution.expectation
+  calc
+    (∑ a, μ.weight a * (coverage (X a) : ℚ)) ≤ ∑ a, μ.weight a * 4 := by
+      apply Finset.sum_le_sum
+      intro a _
+      apply mul_le_mul_of_nonneg_left
+      · exact Nat.cast_le.2 (coverage_le_four (X a))
+      · exact μ.nonnegative a
+    _ = 4 := by rw [← Finset.sum_mul, μ.total]; norm_num
+
 theorem numerator_expectedCoverage :
     expectedCoverage numeratorDistribution numeratorOutcome = 4 := by
   have h₀ := witness_outcomes_cover_all.1
@@ -351,5 +467,26 @@ theorem numerator_expectedCoverage :
   have h₂ := witness_outcomes_cover_all.2.2
   norm_num [expectedCoverage, FiniteDistribution.expectation, numeratorDistribution, numeratorOutcome,
     numeratorWeight, Fin.sum_univ_succ, h₀, h₁, h₂]
+
+theorem certified_ratio :
+    (4 : ℚ) / (479 / 160) = 640 / 479 ∧ (4 / 3 : ℚ) < 640 / 479 := by
+  norm_num
+
+/-- End-to-end certificate for the Ramachandra--Natarajan counterexample. -/
+theorem pairwise_correlation_gap_counterexample :
+    HasMarginals numeratorDistribution numeratorOutcome targetMarginal ∧
+    expectedCoverage numeratorDistribution numeratorOutcome = 4 ∧
+    (∀ μ : FiniteDistribution Outcome, expectedCoverage μ id ≤ 4) ∧
+    IsPairwiseFeasibleAt productDistribution id targetMarginal ∧
+    (∀ μ : FiniteDistribution Outcome,
+      IsPairwiseFeasibleAt μ id targetMarginal → expectedCoverage μ id ≤ 479 / 160) ∧
+    (4 : ℚ) / (479 / 160) = 640 / 479 ∧
+    (4 / 3 : ℚ) < 640 / 479 := by
+  refine ⟨numerator_hasMarginals, numerator_expectedCoverage, ?_,
+    productDistribution_pairwiseFeasible, ?_, certified_ratio.1, certified_ratio.2⟩
+  · intro μ
+    exact expectedCoverage_le_four μ id
+  · intro μ h
+    exact pairwise_expectedCoverage_le μ id h
 
 end CorrelationGap

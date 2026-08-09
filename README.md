@@ -40,14 +40,19 @@ domination over all 32 outcomes using an integer-scaled certificate, evaluates
 its expectation from the prescribed first and second moments, and proves the
 universal pairwise-independent upper bound `479/160`.
 
+To rule out vacuous feasibility, the file constructs the mutually independent
+product distribution at the target marginals and proves it is pairwise
+feasible. The final theorem packages unrestricted optimality at value four,
+the pairwise-independent upper bound, and the strict comparison
+`640/479 > 4/3`.
+
 The monotonicity and submodularity results use kernel-checked `decide` over the
 finite state space; exact rational identities use the proof-producing
 `norm_num` tactic. There are no `sorry` declarations. An axiom audit reports
 only Mathlib's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
 
-Still to formalize:
-
-- the final ratio `640 / 479 > 4 / 3`.
+The finite counterexample is now formalized end to end. This does not constitute
+an independent review of the paper's broader exposition or historical claims.
 
 ## Building
 
