@@ -1,4 +1,8 @@
 import Mathlib.Data.Fintype.Powerset
+import Mathlib.Data.Rat.BigOperators
+import Mathlib.Algebra.BigOperators.Fin
+import Mathlib.Tactic.FinCases
+import Mathlib.Tactic.NormNum
 
 /-!
 # Pairwise-independent correlation-gap counterexample
@@ -39,6 +43,21 @@ def IsMonotone (f : Outcome → ℕ) : Prop :=
 def IsSubmodular (f : Outcome → ℕ) : Prop :=
   ∀ S T, f (S ∪ T) + f (S ∩ T) ≤ f S + f T
 
+/-- An exact probability distribution on a finite type. -/
+structure FiniteDistribution (α : Type*) [Fintype α] where
+  weight : α → ℚ
+  nonnegative : ∀ a, 0 ≤ weight a
+  total : ∑ a, weight a = 1
+
+namespace FiniteDistribution
+
+/-- The exact expectation of a rational-valued function. -/
+def expectation {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (f : α → ℚ) : ℚ :=
+  ∑ a, μ.weight a * f a
+
+end FiniteDistribution
+
 theorem coverage_nonnegative (S : Outcome) : 0 ≤ coverage S :=
   Nat.zero_le _
 
@@ -57,5 +76,66 @@ theorem coverage_submodular : IsSubmodular coverage := by
 theorem witness_outcomes_cover_all :
     coverage {0, 2} = 4 ∧ coverage {1} = 4 ∧ coverage {3, 4} = 4 := by
   decide
+
+/-! ## The unrestricted numerator witness -/
+
+/-- The three atoms in the unrestricted witness distribution. -/
+abbrev NumeratorAtom := Fin 3
+
+/-- The outcome associated with each atom. -/
+def numeratorOutcome (a : NumeratorAtom) : Outcome :=
+  match a with
+  | 0 => {0, 2}
+  | 1 => {1}
+  | 2 => {3, 4}
+
+/-- The probability of each atom. -/
+def numeratorWeight (a : NumeratorAtom) : ℚ :=
+  match a with
+  | 0 => 3 / 10
+  | 1 => 7 / 20
+  | 2 => 7 / 20
+
+theorem numeratorWeight_nonnegative : ∀ a, 0 ≤ numeratorWeight a := by
+  intro a
+  fin_cases a <;> norm_num [numeratorWeight]
+
+theorem numeratorWeight_total : ∑ a : NumeratorAtom, numeratorWeight a = 1 := by
+  norm_num [Fin.sum_univ_succ, numeratorWeight]
+
+/-- The unrestricted three-atom distribution attaining coverage four. -/
+def numeratorDistribution : FiniteDistribution NumeratorAtom where
+  weight := numeratorWeight
+  nonnegative := numeratorWeight_nonnegative
+  total := numeratorWeight_total
+
+/-- The probability that ground-set element `i` belongs to the outcome. -/
+def inclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α)
+    (X : α → Outcome) (i : Ground) : ℚ :=
+  ∑ a, if i ∈ X a then μ.weight a else 0
+
+/-- The marginal vector used in the counterexample. -/
+def targetMarginal (i : Ground) : ℚ :=
+  match i with
+  | 0 => 3 / 10
+  | 1 => 7 / 20
+  | 2 => 3 / 10
+  | 3 => 7 / 20
+  | 4 => 7 / 20
+
+theorem numerator_marginals :
+    ∀ i, inclusionMarginal numeratorDistribution numeratorOutcome i = targetMarginal i := by
+  intro i
+  fin_cases i <;>
+    norm_num [inclusionMarginal, numeratorDistribution, numeratorOutcome,
+      numeratorWeight, targetMarginal, Fin.sum_univ_succ, Fin.ext_iff]
+
+theorem numerator_expectedCoverage :
+    numeratorDistribution.expectation (fun a => coverage (numeratorOutcome a)) = 4 := by
+  have h₀ := witness_outcomes_cover_all.1
+  have h₁ := witness_outcomes_cover_all.2.1
+  have h₂ := witness_outcomes_cover_all.2.2
+  norm_num [FiniteDistribution.expectation, numeratorDistribution, numeratorOutcome,
+    numeratorWeight, Fin.sum_univ_succ, h₀, h₁, h₂]
 
 end CorrelationGap

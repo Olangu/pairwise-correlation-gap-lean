@@ -14,7 +14,7 @@ read as independent mathematical verification of the full result.
 
 ## Current status
 
-The first finite block is complete. `CorrelationGap.lean` defines the
+The first two finite blocks are complete. `CorrelationGap.lean` defines the
 five-element coverage instance and proves:
 
 - the coverage value is at most four;
@@ -23,15 +23,21 @@ five-element coverage instance and proves:
 - each of the three support outcomes in the unrestricted witness has coverage
   four.
 
+It also defines the unrestricted witness as an exact three-atom rational
+distribution and proves:
+
+- every weight is nonnegative and the weights sum to one;
+- its five inclusion marginals are `(3/10, 7/20, 3/10, 7/20, 7/20)`; and
+- its expected coverage is four.
+
 The monotonicity and submodularity results use kernel-checked `decide` over the
-finite state space. There are no `sorry` declarations. An axiom audit reports
+finite state space; exact rational identities use the proof-producing
+`norm_num` tactic. There are no `sorry` declarations. An axiom audit reports
 only Mathlib's standard `propext`, `Classical.choice`, and `Quot.sound` axioms.
 
 Still to formalize:
 
-- the unrestricted witness distribution and its marginals;
 - pairwise independence for the competing distributions;
-- the expected-value calculations;
 - the quadratic dual certificate bounding the pairwise-independent optimum;
 - the final ratio `640 / 479 > 4 / 3`.
 
