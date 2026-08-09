@@ -1,5 +1,6 @@
 import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Rat.BigOperators
+import Mathlib.Data.Real.Basic
 import Mathlib.Algebra.BigOperators.Fin
 import Mathlib.Algebra.Order.BigOperators.Group.Finset
 import Mathlib.Tactic.FinCases
@@ -9,9 +10,9 @@ import Mathlib.Tactic.Ring
 /-!
 # Pairwise-independent correlation-gap counterexample
 
-This file starts a formalization of the five-element counterexample of
-Ramachandra and Natarajan.  The first block defines the coverage function and
-checks its elementary properties on the finite ground set.
+This file gives an end-to-end formalization of the five-element counterexample
+of Ramachandra and Natarajan. Exact witnesses are computed over `ℚ`; universal
+optimization bounds are proved for finite distributions with real weights.
 -/
 
 namespace CorrelationGap
@@ -45,39 +46,57 @@ def IsMonotone (f : Outcome → ℕ) : Prop :=
 def IsSubmodular (f : Outcome → ℕ) : Prop :=
   ∀ S T, f (S ∪ T) + f (S ∩ T) ≤ f S + f T
 
-/-- An exact probability distribution on a finite type. -/
-structure FiniteDistribution (α : Type*) [Fintype α] where
-  weight : α → ℚ
+/-- A probability distribution on a finite type, valued in an ordered field. -/
+structure FiniteDistribution (α R : Type*) [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] where
+  weight : α → R
   nonnegative : ∀ a, 0 ≤ weight a
   total : ∑ a, weight a = 1
 
+/-- Exact rational finite distributions used for computational witnesses. -/
+abbrev RatDistribution (α : Type*) [Fintype α] := FiniteDistribution α ℚ
+
 namespace FiniteDistribution
 
-/-- The exact expectation of a rational-valued function. -/
-def expectation {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (f : α → ℚ) : ℚ :=
+/-- Regard an exact rational distribution as a distribution over an ordered field. -/
+def cast {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : RatDistribution α) : FiniteDistribution α R where
+  weight a := (μ.weight a : R)
+  nonnegative a := Rat.cast_nonneg.2 (μ.nonnegative a)
+  total := by
+    have h := congrArg (fun q : ℚ => (q : R)) μ.total
+    simpa using h
+
+/-- The expectation of a field-valued function under a finite distribution. -/
+def expectation {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (f : α → R) : R :=
   ∑ a, μ.weight a * f a
 
 @[simp]
-theorem expectation_const {α : Type*} [Fintype α] (μ : FiniteDistribution α) (c : ℚ) :
+theorem expectation_const {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (c : R) :
     μ.expectation (fun _ => c) = c := by
   rw [expectation, ← Finset.sum_mul, μ.total, one_mul]
 
 @[simp]
-theorem expectation_add {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (f g : α → ℚ) :
+theorem expectation_add {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (f g : α → R) :
     μ.expectation (fun a => f a + g a) = μ.expectation f + μ.expectation g := by
   simp [expectation, mul_add, Finset.sum_add_distrib]
 
 @[simp]
-theorem expectation_sub {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (f g : α → ℚ) :
+theorem expectation_sub {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (f g : α → R) :
     μ.expectation (fun a => f a - g a) = μ.expectation f - μ.expectation g := by
   simp [expectation, mul_sub, Finset.sum_sub_distrib]
 
 @[simp]
-theorem expectation_const_mul {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (c : ℚ) (f : α → ℚ) :
+theorem expectation_const_mul {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (c : R) (f : α → R) :
     μ.expectation (fun a => c * f a) = c * μ.expectation f := by
   simp only [expectation, Finset.mul_sum]
   apply Finset.sum_congr rfl
@@ -132,28 +151,53 @@ theorem numeratorWeight_total : ∑ a : NumeratorAtom, numeratorWeight a = 1 := 
   norm_num [Fin.sum_univ_succ, numeratorWeight]
 
 /-- The unrestricted three-atom distribution attaining coverage four. -/
-def numeratorDistribution : FiniteDistribution NumeratorAtom where
+def numeratorDistribution : RatDistribution NumeratorAtom where
   weight := numeratorWeight
   nonnegative := numeratorWeight_nonnegative
   total := numeratorWeight_total
 
 /-- The probability that ground-set element `i` belongs to the outcome. -/
-def inclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) (i : Ground) : ℚ :=
+def inclusionMarginal {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (i : Ground) : R :=
   ∑ a, if i ∈ X a then μ.weight a else 0
 
 /-- The probability that both `i` and `j` belong to the outcome. -/
-def jointInclusionMarginal {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) (i j : Ground) : ℚ :=
+def jointInclusionMarginal {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (i j : Ground) : R :=
   ∑ a, if i ∈ X a ∧ j ∈ X a then μ.weight a else 0
 
-/-- The rational indicator that `i` belongs to `S`. -/
-def inclusionIndicator (i : Ground) (S : Outcome) : ℚ :=
+theorem inclusionMarginal_cast {α R : Type*} [Fintype α]
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : RatDistribution α) (X : α → Outcome) (i : Ground) :
+    inclusionMarginal (μ.cast (R := R)) X i =
+      (inclusionMarginal (R := ℚ) μ X i : R) := by
+  unfold inclusionMarginal FiniteDistribution.cast
+  rw [Rat.cast_sum]
+  apply Finset.sum_congr rfl
+  intro a _
+  by_cases h : i ∈ X a <;> simp [h]
+
+theorem jointInclusionMarginal_cast {α R : Type*} [Fintype α]
+    [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : RatDistribution α) (X : α → Outcome) (i j : Ground) :
+    jointInclusionMarginal (μ.cast (R := R)) X i j =
+      (jointInclusionMarginal (R := ℚ) μ X i j : R) := by
+  unfold jointInclusionMarginal FiniteDistribution.cast
+  rw [Rat.cast_sum]
+  apply Finset.sum_congr rfl
+  intro a _
+  by_cases h : i ∈ X a ∧ j ∈ X a <;> simp [h]
+
+/-- The field-valued indicator that `i` belongs to `S`. -/
+def inclusionIndicator {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (i : Ground) (S : Outcome) : R :=
   if i ∈ S then 1 else 0
 
 @[simp]
-theorem expectation_inclusionIndicator {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome) (i : Ground) :
+theorem expectation_inclusionIndicator {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (i : Ground) :
     μ.expectation (fun a => inclusionIndicator i (X a)) = inclusionMarginal μ X i := by
   unfold FiniteDistribution.expectation inclusionMarginal inclusionIndicator
   apply Finset.sum_congr rfl
@@ -161,8 +205,9 @@ theorem expectation_inclusionIndicator {α : Type*} [Fintype α]
   by_cases h : i ∈ X a <;> simp [h]
 
 @[simp]
-theorem expectation_indicator_mul {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome) (i j : Ground) :
+theorem expectation_indicator_mul {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (i j : Ground) :
     μ.expectation (fun a => inclusionIndicator i (X a) * inclusionIndicator j (X a)) =
       jointInclusionMarginal μ X i j := by
   unfold FiniteDistribution.expectation jointInclusionMarginal inclusionIndicator
@@ -171,28 +216,30 @@ theorem expectation_indicator_mul {α : Type*} [Fintype α]
   by_cases hi : i ∈ X a <;> by_cases hj : j ∈ X a <;> simp [hi, hj]
 
 /-- The exact expected coverage of a random outcome. -/
-def expectedCoverage {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) : ℚ :=
+def expectedCoverage {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) : R :=
   μ.expectation (fun a => coverage (X a))
 
 /-- The inclusion marginals of `X` agree with `x`. -/
-def HasMarginals {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) (x : Ground → ℚ) : Prop :=
+def HasMarginals {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (x : Ground → R) : Prop :=
   ∀ i, inclusionMarginal μ X i = x i
 
 /-- Pairwise independence in the moment form used by the finite LP. -/
-def IsPairwiseIndependent {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) : Prop :=
+def IsPairwiseIndependent {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) : Prop :=
   ∀ i j, i ≠ j →
     jointInclusionMarginal μ X i j = inclusionMarginal μ X i * inclusionMarginal μ X j
 
 /-- Feasibility for the pairwise-independent extension at marginal vector `x`. -/
-def IsPairwiseFeasibleAt {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) (x : Ground → ℚ) : Prop :=
+def IsPairwiseFeasibleAt {α R : Type*} [Fintype α] [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) (x : Ground → R) : Prop :=
   HasMarginals μ X x ∧ IsPairwiseIndependent μ X
 
 /-- The marginal vector used in the counterexample. -/
-def targetMarginal (i : Ground) : ℚ :=
+def targetMarginal {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R] (i : Ground) : R :=
   match i with
   | 0 => 3 / 10
   | 1 => 7 / 20
@@ -211,6 +258,13 @@ theorem numerator_hasMarginals :
     HasMarginals numeratorDistribution numeratorOutcome targetMarginal :=
   numerator_marginals
 
+theorem numerator_hasMarginals_real :
+    HasMarginals (numeratorDistribution.cast (R := ℝ)) numeratorOutcome targetMarginal := by
+  intro i
+  fin_cases i <;>
+    norm_num [inclusionMarginal, FiniteDistribution.cast, numeratorDistribution,
+      numeratorOutcome, numeratorWeight, targetMarginal, Fin.sum_univ_succ, Fin.ext_iff]
+
 /-- The numerator witness is unrestricted: coordinates `0` and `2` are not independent. -/
 theorem numerator_not_pairwiseIndependent :
     ¬IsPairwiseIndependent numeratorDistribution numeratorOutcome := by
@@ -220,8 +274,9 @@ theorem numerator_not_pairwiseIndependent :
     numeratorOutcome, numeratorWeight, Fin.sum_univ_succ, Fin.ext_iff] at h02
 
 /-- Pairwise feasibility fixes every off-diagonal second moment. -/
-theorem feasible_jointInclusionMarginal {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome)
+theorem feasible_jointInclusionMarginal {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome)
     (h : IsPairwiseFeasibleAt μ X targetMarginal) {i j : Ground} (hij : i ≠ j) :
     jointInclusionMarginal μ X i j = targetMarginal i * targetMarginal j := by
   rw [h.2 i j hij, h.1 i, h.1 j]
@@ -262,7 +317,7 @@ theorem productWeightNumerator_pair :
 def productWeight (S : Outcome) : ℚ :=
   productWeightNumerator S / productDenominator
 
-theorem sum_natCast_div (f : Outcome → ℕ) (d : ℕ) :
+private theorem sum_natCast_div (f : Outcome → ℕ) (d : ℕ) :
     (∑ S : Outcome, (f S : ℚ) / d) = ((∑ S : Outcome, f S : ℕ) : ℚ) / d := by
   simp only [div_eq_mul_inv]
   rw [← Finset.sum_mul]
@@ -294,7 +349,7 @@ theorem productWeight_total : ∑ S : Outcome, productWeight S = 1 := by
     _ = 1 := by rw [productWeightNumerator_total]; norm_num [productDenominator]
 
 /-- The ordinary independent product distribution at the target marginals. -/
-def productDistribution : FiniteDistribution Outcome where
+def productDistribution : RatDistribution Outcome where
   weight := productWeight
   nonnegative := productWeight_nonnegative
   total := productWeight_total
@@ -328,6 +383,18 @@ theorem productDistribution_pairwiseFeasible :
     IsPairwiseFeasibleAt productDistribution id targetMarginal :=
   ⟨productDistribution_hasMarginals, productDistribution_pairwiseIndependent⟩
 
+theorem productDistribution_pairwiseFeasible_real :
+    IsPairwiseFeasibleAt (productDistribution.cast (R := ℝ)) id targetMarginal := by
+  constructor
+  · intro i
+    rw [inclusionMarginal_cast]
+    rw [productDistribution_hasMarginals i]
+    fin_cases i <;> norm_num [targetMarginal]
+  · intro i j hij
+    rw [jointInclusionMarginal_cast, inclusionMarginal_cast, inclusionMarginal_cast]
+    rw [productDistribution_pairwiseIndependent i j hij]
+    norm_num
+
 /-! ## The quadratic dual certificate -/
 
 /-- Integer-valued membership indicator used for exhaustive checking. -/
@@ -343,8 +410,9 @@ def dualCertificateTwiceInt (S : Outcome) : ℤ :=
     + (I 0 * I 2 + I 3 * I 4)
     - (I 0 * I 3 + I 0 * I 4 + I 2 * I 3 + I 2 * I 4)
 
-/-- Rational form of twice the quadratic dual certificate. -/
-def dualCertificateTwice (S : Outcome) : ℚ :=
+/-- Ordered-field form of twice the quadratic dual certificate. -/
+def dualCertificateTwice {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (S : Outcome) : R :=
   let I := fun i => inclusionIndicator i S
   1 + 3 * (I 0 + I 2 + I 3 + I 4) + 7 * I 1
     - 2 * (I 0 * I 1 + I 1 * I 2)
@@ -353,12 +421,13 @@ def dualCertificateTwice (S : Outcome) : ℚ :=
     - (I 0 * I 3 + I 0 * I 4 + I 2 * I 3 + I 2 * I 4)
 
 /-- The quadratic certificate itself. -/
-def dualCertificate (S : Outcome) : ℚ :=
+def dualCertificate {R : Type*} [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (S : Outcome) : R :=
   dualCertificateTwice S / 2
 
 /-- The moment expression obtained by taking the expectation of the doubled certificate. -/
-def dualMomentValue {α : Type*} [Fintype α] (μ : FiniteDistribution α)
-    (X : α → Outcome) : ℚ :=
+def dualMomentValue {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) : R :=
   let m := inclusionMarginal μ X
   let p := jointInclusionMarginal μ X
   1 + 3 * (m 0 + m 2 + m 3 + m 4) + 7 * m 1
@@ -371,28 +440,32 @@ theorem dualCertificateTwiceInt_dominates :
     ∀ S, (2 : ℤ) * coverage S ≤ dualCertificateTwiceInt S := by
   decide
 
-theorem dualCertificateTwice_eq_cast (S : Outcome) :
-    dualCertificateTwice S = (dualCertificateTwiceInt S : ℚ) := by
+theorem dualCertificateTwice_eq_cast {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] (S : Outcome) :
+    dualCertificateTwice S = (dualCertificateTwiceInt S : R) := by
   simp [dualCertificateTwice, dualCertificateTwiceInt, inclusionIndicator,
     inclusionIndicatorInt]
 
-theorem coverage_le_dualCertificate (S : Outcome) :
-    (coverage S : ℚ) ≤ dualCertificate S := by
+theorem coverage_le_dualCertificate {R : Type*} [Field R] [LinearOrder R]
+    [IsStrictOrderedRing R] (S : Outcome) :
+    (coverage S : R) ≤ dualCertificate S := by
   rw [dualCertificate]
-  apply (le_div_iff₀ (by norm_num : (0 : ℚ) < 2)).2
+  apply (le_div_iff₀ (by norm_num : (0 : R) < 2)).2
   have h := dualCertificateTwiceInt_dominates S
-  have h' : ((((2 : ℤ) * (coverage S : ℤ)) : ℤ) : ℚ) ≤
-      (dualCertificateTwiceInt S : ℚ) :=
+  have h' : ((((2 : ℤ) * (coverage S : ℤ)) : ℤ) : R) ≤
+      (dualCertificateTwiceInt S : R) :=
     Int.cast_le.2 h
   simpa [dualCertificateTwice_eq_cast, mul_comm] using h'
 
-theorem expectation_dualCertificateTwice {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome) :
+theorem expectation_dualCertificateTwice {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) :
     μ.expectation (fun a => dualCertificateTwice (X a)) = dualMomentValue μ X := by
   simp [dualCertificateTwice, dualMomentValue]
 
-theorem dualMomentValue_of_feasible {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome)
+theorem dualMomentValue_of_feasible {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome)
     (h : IsPairwiseFeasibleAt μ X targetMarginal) :
     dualMomentValue μ X = 479 / 80 := by
   dsimp [dualMomentValue]
@@ -409,27 +482,29 @@ theorem dualMomentValue_of_feasible {α : Type*} [Fintype α]
   rw [feasible_jointInclusionMarginal μ X h (i := 2) (j := 4) (by decide)]
   norm_num [targetMarginal]
 
-theorem expectation_dualCertificate_of_feasible {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome)
+theorem expectation_dualCertificate_of_feasible
+    {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome)
     (h : IsPairwiseFeasibleAt μ X targetMarginal) :
     μ.expectation (fun a => dualCertificate (X a)) = 479 / 160 := by
   calc
     μ.expectation (fun a => dualCertificate (X a)) =
-        μ.expectation (fun a => (1 / 2 : ℚ) * dualCertificateTwice (X a)) := by
+        μ.expectation (fun a => (1 / 2 : R) * dualCertificateTwice (X a)) := by
           congr 1
           funext a
           unfold dualCertificate
           ring
-    _ = (1 / 2 : ℚ) * μ.expectation (fun a => dualCertificateTwice (X a)) := by
+    _ = (1 / 2 : R) * μ.expectation (fun a => dualCertificateTwice (X a)) := by
       rw [FiniteDistribution.expectation_const_mul]
-    _ = (1 / 2 : ℚ) * dualMomentValue μ X := by
+    _ = (1 / 2 : R) * dualMomentValue μ X := by
       rw [expectation_dualCertificateTwice]
     _ = 479 / 160 := by
       rw [dualMomentValue_of_feasible μ X h]
       norm_num
 
-theorem expectedCoverage_le_expectation_dualCertificate {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome) :
+theorem expectedCoverage_le_expectation_dualCertificate
+    {α R : Type*} [Fintype α] [Field R] [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) :
     expectedCoverage μ X ≤ μ.expectation (fun a => dualCertificate (X a)) := by
   unfold expectedCoverage FiniteDistribution.expectation
   apply Finset.sum_le_sum
@@ -437,8 +512,9 @@ theorem expectedCoverage_le_expectation_dualCertificate {α : Type*} [Fintype α
   exact mul_le_mul_of_nonneg_left (coverage_le_dualCertificate (X a)) (μ.nonnegative a)
 
 /-- Universal upper bound for the pairwise-independent denominator. -/
-theorem pairwise_expectedCoverage_le {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome)
+theorem pairwise_expectedCoverage_le {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome)
     (h : IsPairwiseFeasibleAt μ X targetMarginal) :
     expectedCoverage μ X ≤ 479 / 160 := by
   calc
@@ -447,12 +523,13 @@ theorem pairwise_expectedCoverage_le {α : Type*} [Fintype α]
     _ = 479 / 160 := expectation_dualCertificate_of_feasible μ X h
 
 /-- No distribution can exceed the four available features. -/
-theorem expectedCoverage_le_four {α : Type*} [Fintype α]
-    (μ : FiniteDistribution α) (X : α → Outcome) :
+theorem expectedCoverage_le_four {α R : Type*} [Fintype α] [Field R]
+    [LinearOrder R] [IsStrictOrderedRing R]
+    (μ : FiniteDistribution α R) (X : α → Outcome) :
     expectedCoverage μ X ≤ 4 := by
   unfold expectedCoverage FiniteDistribution.expectation
   calc
-    (∑ a, μ.weight a * (coverage (X a) : ℚ)) ≤ ∑ a, μ.weight a * 4 := by
+    (∑ a, μ.weight a * (coverage (X a) : R)) ≤ ∑ a, μ.weight a * 4 := by
       apply Finset.sum_le_sum
       intro a _
       apply mul_le_mul_of_nonneg_left
@@ -465,25 +542,35 @@ theorem numerator_expectedCoverage :
   have h₀ := witness_outcomes_cover_all.1
   have h₁ := witness_outcomes_cover_all.2.1
   have h₂ := witness_outcomes_cover_all.2.2
-  norm_num [expectedCoverage, FiniteDistribution.expectation, numeratorDistribution, numeratorOutcome,
-    numeratorWeight, Fin.sum_univ_succ, h₀, h₁, h₂]
+  norm_num [expectedCoverage, FiniteDistribution.expectation, numeratorDistribution,
+    numeratorOutcome, numeratorWeight, Fin.sum_univ_succ, h₀, h₁, h₂]
+
+theorem numerator_expectedCoverage_real :
+    expectedCoverage (numeratorDistribution.cast (R := ℝ)) numeratorOutcome = 4 := by
+  have h := congrArg (fun q : ℚ => (q : ℝ)) numerator_expectedCoverage
+  simpa [expectedCoverage, FiniteDistribution.expectation, FiniteDistribution.cast] using h
 
 theorem certified_ratio :
     (4 : ℚ) / (479 / 160) = 640 / 479 ∧ (4 / 3 : ℚ) < 640 / 479 := by
   norm_num
 
+theorem certified_ratio_real :
+    (4 : ℝ) / (479 / 160) = 640 / 479 ∧ (4 / 3 : ℝ) < 640 / 479 := by
+  norm_num
+
 /-- End-to-end certificate for the Ramachandra--Natarajan counterexample. -/
 theorem pairwise_correlation_gap_counterexample :
-    HasMarginals numeratorDistribution numeratorOutcome targetMarginal ∧
-    expectedCoverage numeratorDistribution numeratorOutcome = 4 ∧
-    (∀ μ : FiniteDistribution Outcome, expectedCoverage μ id ≤ 4) ∧
-    IsPairwiseFeasibleAt productDistribution id targetMarginal ∧
-    (∀ μ : FiniteDistribution Outcome,
+    HasMarginals (numeratorDistribution.cast (R := ℝ)) numeratorOutcome targetMarginal ∧
+    expectedCoverage (numeratorDistribution.cast (R := ℝ)) numeratorOutcome = 4 ∧
+    (∀ μ : FiniteDistribution Outcome ℝ, expectedCoverage μ id ≤ 4) ∧
+    IsPairwiseFeasibleAt (productDistribution.cast (R := ℝ)) id targetMarginal ∧
+    (∀ μ : FiniteDistribution Outcome ℝ,
       IsPairwiseFeasibleAt μ id targetMarginal → expectedCoverage μ id ≤ 479 / 160) ∧
-    (4 : ℚ) / (479 / 160) = 640 / 479 ∧
-    (4 / 3 : ℚ) < 640 / 479 := by
-  refine ⟨numerator_hasMarginals, numerator_expectedCoverage, ?_,
-    productDistribution_pairwiseFeasible, ?_, certified_ratio.1, certified_ratio.2⟩
+    (4 : ℝ) / (479 / 160) = 640 / 479 ∧
+    (4 / 3 : ℝ) < 640 / 479 := by
+  refine ⟨numerator_hasMarginals_real, numerator_expectedCoverage_real, ?_,
+    productDistribution_pairwiseFeasible_real, ?_, certified_ratio_real.1,
+    certified_ratio_real.2⟩
   · intro μ
     exact expectedCoverage_le_four μ id
   · intro μ h
